@@ -12,6 +12,7 @@ import time
 
 from . import registry
 from .cache import entity_cache
+from .graph import KnowledgeGraph
 from .logging import get_logger
 from .merger import merge
 from .planner import plan
@@ -19,6 +20,7 @@ from .resolver import resolve
 from .scorer import score
 
 log = get_logger("engine")
+_graph = KnowledgeGraph()
 
 
 def _summary(person, merged: dict) -> str:
@@ -51,6 +53,15 @@ async def run(query: str) -> dict:
     confidence = score(results)
     person.confidence = confidence
 
+    related_entities: list[dict] = []
+    relationships: list[dict] = []
+    try:  # graph is best-effort — it must never fail the lookup
+        _graph.update(person)
+        related_entities = _graph.neighbors(person.id)
+        relationships = _graph.relationships(person.id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("graph update failed: %s", exc)
+
     out = {
         "query": query,
         "person": person.to_dict(),
@@ -58,6 +69,8 @@ async def run(query: str) -> dict:
         "confidence": confidence,
         "sources": merged["sources"],
         "matches": merged["matches"],
+        "related_entities": related_entities,
+        "relationships": relationships,
         "workers_used": [r.provider for r in results],
         "latency_ms": int((time.perf_counter() - start) * 1000),
         "cache_hit": False,
