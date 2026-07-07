@@ -33,7 +33,8 @@ class Settings:
     vision_base_url: str = os.getenv("VISION_BASE_URL", "https://api.openai.com/v1")
     vision_api_key: str = os.getenv("VISION_API_KEY", "")
     vision_model: str = os.getenv("VISION_MODEL", "gpt-4o-mini")
-
+    tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
+    github_token: str = os.getenv("GITHUB_TOKEN", "")
 
 def load_settings() -> Settings:
     return Settings()

@@ -15,6 +15,7 @@ import urllib.request
 
 from .config import load_settings
 from .memory.store import MemoryStore
+from .osint.public_search import public_search
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -69,6 +70,29 @@ def add_memory(kind: str, text: str) -> dict:
     if kind in ("result", "reply", "answer"):
         _broadcast_result(text)   # surface finished work to the glasses in real time
     return {"id": mid, "kind": kind, "text": text}
+
+
+
+@mcp.tool()
+async def aiglass_public_search(
+    query: str,
+    max_results: int = 5,
+) -> dict:
+    """
+    Search the public web.
+
+    Use for:
+    - People
+    - Companies
+    - Products
+    - Technologies
+    - Startups
+    """
+
+    return await public_search(
+        query=query,
+        max_results=max_results,
+    )
 
 
 if __name__ == "__main__":
