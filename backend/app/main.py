@@ -16,8 +16,10 @@ Run: uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import re
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -26,6 +28,9 @@ from .config import build_orchestrator, build_stt, build_vision, load_settings
 from .events import EventHub
 from .memory.store import MemoryStore
 from .pipeline import Pipeline
+from .shim import extract_task, shape_completion
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 settings = load_settings()
 memory = MemoryStore(settings.db_path)
@@ -72,6 +77,17 @@ class Turn(BaseModel):
     source: str = "gemini"    # gemini | hermes | app
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str = ""
+
+
+class ChatCompletionRequest(BaseModel):
+    messages: list[ChatMessage]
+    model: str | None = None
+    stream: bool | None = False
+
+
 @app.get("/health")
 def health() -> dict:
     return {"ok": True, "stt": settings.stt_provider, "orchestrator": settings.orch_provider}
@@ -103,6 +119,41 @@ async def record_turn(turn: Turn) -> dict:
     event = {"type": "turn", "role": turn.role, "text": turn.text, "source": turn.source, "memory_id": memory_id}
     await hub.publish(event)
     return event
+
+
+async def _run_hermes(task: str) -> str:
+    """Execute a task with the Hermes agent (one-shot) and return its cleaned text output."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            settings.hermes_bin, "-z", task,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+    except FileNotFoundError:
+        return "Hermes is not reachable (check HERMES_BIN)."
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=settings.hermes_timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return "That's taking a while — it's still running in the background."
+    return _ANSI.sub("", out.decode("utf-8", "replace")).strip() or "Done."
+
+
+@app.post("/v1/chat/completions", dependencies=[Depends(require_auth)])
+async def chat_completions(body: ChatCompletionRequest) -> dict:
+    """OpenClaw-compatible shim: the glasses app's `execute` tool lands here. Log the task, run it through
+    Hermes, log + broadcast the result, and return it in OpenAI chat-completions shape."""
+    task = extract_task([m.model_dump() for m in body.messages])
+    if not task:
+        raise HTTPException(status_code=400, detail="no user message")
+
+    memory.add_memory("task", task, source="glass")
+    await hub.publish({"type": "turn", "role": "user", "text": task, "source": "glass"})
+
+    result = await _run_hermes(task)
+
+    memory.add_memory("result", result, source="hermes")
+    await hub.publish({"type": "turn", "role": "assistant", "text": result, "source": "hermes"})
+    return shape_completion(result)
 
 
 @app.get("/memories", dependencies=[Depends(require_auth)])

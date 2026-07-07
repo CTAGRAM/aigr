@@ -24,6 +24,11 @@ class Settings:
     hermes_url: str = os.getenv("HERMES_URL", "http://127.0.0.1:8080")
     hermes_api_key: str | None = os.getenv("HERMES_API_KEY") or None
 
+    # The /v1/chat/completions shim runs each task via `hermes -z <task>`. Needs the absolute path to the
+    # hermes binary (systemd's PATH is minimal). Find it with: which hermes
+    hermes_bin: str = os.getenv("HERMES_BIN", "hermes")
+    hermes_timeout: float = float(os.getenv("HERMES_TIMEOUT", "120"))
+
     vision_provider: str = os.getenv("VISION_PROVIDER", "mock")  # mock | llm
     vision_base_url: str = os.getenv("VISION_BASE_URL", "https://api.openai.com/v1")
     vision_api_key: str = os.getenv("VISION_API_KEY", "")
