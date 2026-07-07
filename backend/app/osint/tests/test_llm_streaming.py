@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))  # -> backend/
 
-from app.osint import registry, streaming                          # noqa: E402
+from app.osint import planner, registry, streaming                 # noqa: E402
 from app.osint.llm import planner as llm_planner                    # noqa: E402
 from app.osint.llm import summarizer, verifier                     # noqa: E402
 
@@ -49,7 +49,16 @@ def test_streaming_emits_phases():
 
 def test_new_workers_registered():
     avail = registry.available()
-    assert "conference" in avail          # imports cleanly (no httpx) -> always discoverable
+    for w in ("conference", "email", "calendar", "docs", "local"):   # graceful (no httpx) -> discoverable
+        assert w in avail, w
+
+
+def test_planner_routes_new_sources():
+    assert "hackernews" in planner.plan("a rust developer")
+    assert "youtube" in planner.plan("best tutorial video on x")
+    assert "podcast" in planner.plan("the x podcast episode")
+    assert "website" in planner.plan("check example.com please")
+    assert "calendar" in planner.plan("my meeting schedule")
 
 
 def _main() -> int:

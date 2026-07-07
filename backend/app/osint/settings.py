@@ -17,6 +17,11 @@ class OsintSettings:
     entity_cache_ttl: int = int(os.getenv("OSINT_ENTITY_CACHE_TTL", "86400"))
     summary_cache_ttl: int = int(os.getenv("OSINT_SUMMARY_CACHE_TTL", "86400"))
     max_workers: int = int(os.getenv("OSINT_MAX_WORKERS", "8"))
+    # Both LLM steps are opt-in and use the app's VISION_* endpoint. They default OFF so the engine stays
+    # fast/deterministic AND doesn't route summaries through a jailbroken gateway; Claude (Hermes) does the
+    # real spoken summary downstream. Turn on with OSINT_LLM_SUMMARY=1 once VISION_* points at a clean model.
+    llm_planner: bool = os.getenv("OSINT_LLM_PLANNER", "0") == "1"
+    llm_summary: bool = os.getenv("OSINT_LLM_SUMMARY", "0") == "1"
 
 
 def osint_settings() -> OsintSettings:

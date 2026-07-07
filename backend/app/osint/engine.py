@@ -13,14 +13,18 @@ import time
 from . import registry
 from .cache import entity_cache
 from .graph import KnowledgeGraph
+from .llm.planner import plan_llm
+from .llm.summarizer import summarize
 from .logging import get_logger
 from .merger import merge
 from .planner import plan
 from .resolver import resolve
 from .scorer import score
+from .settings import osint_settings
 
 log = get_logger("engine")
 _graph = KnowledgeGraph()
+_settings = osint_settings()
 
 
 def _summary(person, merged: dict) -> str:
@@ -44,7 +48,7 @@ async def run(query: str) -> dict:
         return cached
 
     start = time.perf_counter()
-    names = plan(query)
+    names = await plan_llm(query, registry.available()) if _settings.llm_planner else plan(query)
     log.info("plan query=%r workers=%s", query, names)
 
     results = await registry.execute(names, query)      # list[WorkerResult]
@@ -75,6 +79,9 @@ async def run(query: str) -> dict:
         "latency_ms": int((time.perf_counter() - start) * 1000),
         "cache_hit": False,
     }
+    if _settings.llm_summary:  # LLM summary when configured; instant heuristic fallback otherwise
+        out["summary"] = await summarize(out)
+
     entity_cache[key] = out
     return out
 
