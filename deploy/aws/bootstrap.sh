@@ -5,7 +5,9 @@
 set -euo pipefail
 
 : "${REPO_URL:?set REPO_URL to your aigr git repo}"
-: "${GROQ_API_KEY:?set GROQ_API_KEY (free at https://console.groq.com/keys)}"
+: "${LLM_API_KEY:?set LLM_API_KEY (bearer token for your OpenAI-compatible LLM endpoint)}"
+LLM_BASE_URL="${LLM_BASE_URL:-https://api.groq.com/openai/v1}"   # your endpoint's /v1 base
+LLM_MODEL="${LLM_MODEL:-llama-3.2-11b-vision-preview}"           # a vision-capable model id
 
 echo "==> Installing system packages"
 sudo apt-get update -y
@@ -23,14 +25,14 @@ python3 -m venv .venv
 
 echo "==> Writing environment (/etc/aiglass.env)"
 # STT=mock: Gemini Live handles live audio app-side; the app POSTs turns to /turn as text.
-# Vision + Hermes-LLM both use Groq (open models, free tier) — no GPU, keeps the $120 lasting.
+# Vision (and Hermes' brain) use YOUR OpenAI-compatible LLM endpoint.
 sudo tee /etc/aiglass.env >/dev/null <<EOF
 AIGLASS_DB=$HOME/aiglass.db
 STT_PROVIDER=mock
 VISION_PROVIDER=llm
-VISION_BASE_URL=https://api.groq.com/openai/v1
-VISION_MODEL=llama-3.2-11b-vision-preview
-VISION_API_KEY=$GROQ_API_KEY
+VISION_BASE_URL=$LLM_BASE_URL
+VISION_MODEL=$LLM_MODEL
+VISION_API_KEY=$LLM_API_KEY
 ORCH_PROVIDER=hermes
 HERMES_URL=http://127.0.0.1:8080
 AIGLASS_API_URL=http://127.0.0.1:8000
@@ -80,7 +82,7 @@ cat <<'NOTE'
 
 ==> NEXT: install Hermes (the action brain)
     curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh
-    hermes init         # set LLM = Groq (OpenAI-compatible: https://api.groq.com/openai/v1)
+    hermes init         # set LLM = your OpenAI-compatible endpoint (same LLM_BASE_URL / LLM_MODEL)
                         # connect the aiglass MCP server so Hermes can read memory + act
     See docs/HERMES_DEPLOY.md. Until Hermes is up, action items queue gracefully (no crash).
 
