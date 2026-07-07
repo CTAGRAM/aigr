@@ -115,8 +115,14 @@ def test_engine_end_to_end_and_cache():
         for k in ("query", "person", "summary", "confidence", "sources", "workers_used", "latency_ms"):
             assert k in out, k
         assert out["cache_hit"] is False
+        # low-confidence misses are NOT cached (so they retry as sources recover)
         out2 = await engine.run("some unlikely name zzz")
-        assert out2["cache_hit"] is True
+        assert out2["cache_hit"] is False
+        # confident results ARE served from cache
+        from app.osint.cache import entity_cache
+        entity_cache["seeded person q"] = {"query": "seeded person q", "confidence": 0.9, "cache_hit": False}
+        cached = await engine.run("Seeded Person Q")
+        assert cached["cache_hit"] is True
 
     asyncio.run(run())
 

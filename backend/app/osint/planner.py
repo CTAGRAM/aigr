@@ -18,14 +18,38 @@ _CALENDAR_WORDS = ("calendar", "schedule", "meeting", "appointment", "agenda")
 _DOCS_WORDS = ("documentation", "api reference", "docs for")
 _LOCAL_WORDS = ("nearby", "on device", "my files", "local file")
 _DOMAIN = re.compile(r"\b[a-z0-9-]+\.(com|io|org|net|dev|ai|co|xyz|app|me|so|gg|tv)\b", re.I)
+_GH_URL = re.compile(r"github\.com/([A-Za-z0-9-]{1,39})", re.I)
+_GH_USERNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+_NAME_TOKEN = re.compile(r"^[A-Za-z][A-Za-z.'-]*$")
+_STOPWORDS = {"a", "an", "the", "of", "in", "at", "for", "and", "who", "is",
+              "creator", "ceo", "founder", "co-founder", "author"}
+
+
+def _looks_like_github(query: str) -> bool:
+    q = query.strip()
+    if _GH_URL.search(q) or q.startswith("@"):
+        return True
+    # a single bare token satisfying GitHub's username rules is very likely a handle (e.g. "rauchg")
+    return " " not in q and 2 <= len(q) <= 39 and bool(_GH_USERNAME.match(q))
+
+
+def _looks_like_name(query: str) -> bool:
+    toks = query.strip().split()
+    if not 1 <= len(toks) <= 4:
+        return False
+    if any(t.lower() in _STOPWORDS for t in toks):
+        return False
+    return all(_NAME_TOKEN.match(t) for t in toks)
 
 
 def plan(query: str) -> list[str]:
     q = query.lower()
     workers = ["memory", "tavily", "company"]   # memory + web + wikipedia: broadly useful
 
-    if any(w in q for w in _DEVELOPER_WORDS):
+    if any(w in q for w in _DEVELOPER_WORDS) or _looks_like_github(query):
         workers += ["github", "hackernews"]
+    elif _looks_like_name(query):
+        workers.append("github")            # a plain person/company name is worth a GitHub check
     if any(w in q for w in _CONFERENCE_WORDS):
         workers.append("conference")
     if any(w in q for w in _VIDEO_WORDS):

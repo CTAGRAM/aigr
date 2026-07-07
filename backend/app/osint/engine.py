@@ -82,7 +82,8 @@ async def run(query: str) -> dict:
     if _settings.llm_summary:  # LLM summary when configured; instant heuristic fallback otherwise
         out["summary"] = await summarize(out)
 
-    entity_cache[key] = out
+    if confidence >= 0.4:   # don't cache empty/low-confidence misses — let them retry as sources recover
+        entity_cache[key] = out
     return out
 
 

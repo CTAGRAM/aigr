@@ -27,6 +27,9 @@ def resolve(results: list[WorkerResult]) -> Person:
                 person.attributes["languages"] = d["languages"]
             if d.get("repos"):
                 person.attributes["repos"] = d["repos"]
+            for k in ("followers", "public_repos"):
+                if d.get(k) is not None:
+                    person.attributes[k] = d[k]
             person.evidence.append(r.to_dict())
 
         elif r.provider == "tavily":

@@ -1,7 +1,7 @@
 """GitHub worker — resolves a query to a GitHub user, then pulls profile + recent repos + language mix."""
 from __future__ import annotations
 
-import httpx
+import re
 
 from ...config import load_settings
 from ..logging import get_logger
@@ -10,10 +10,21 @@ from .base import worker
 
 API = "https://api.github.com"
 log = get_logger("github")
+_GH_URL = re.compile(r"github\.com/([A-Za-z0-9-]{1,39})", re.I)
+
+
+def _search_term(query: str) -> str:
+    """Normalize @handle / github.com/handle to a clean GitHub search term."""
+    q = query.strip()
+    m = _GH_URL.search(q)
+    if m:
+        return m.group(1)
+    return q[1:] if q.startswith("@") else q
 
 
 @worker("github", timeout=15)
 async def github_worker(query: str) -> WorkerResult:
+    import httpx  # lazy: keeps this module (and _search_term) importable without httpx installed
     settings = load_settings()
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "AIGlass"}
     if settings.github_token:
@@ -21,7 +32,7 @@ async def github_worker(query: str) -> WorkerResult:
 
     async with httpx.AsyncClient(timeout=15) as client:
         search = await client.get(
-            f"{API}/search/users", params={"q": query, "per_page": 1}, headers=headers
+            f"{API}/search/users", params={"q": _search_term(query), "per_page": 1}, headers=headers
         )
         if search.status_code != 200:
             log.warning("search status=%s body=%s", search.status_code, search.text[:200])
