@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# App data
+*.db
+aiglass.db
+
+# Env / secrets
+.env
+*.local
+
+# OS
+.DS_Store
