@@ -30,6 +30,13 @@ from .memory.store import MemoryStore
 from .pipeline import Pipeline
 from .shim import extract_task, shape_completion
 
+try:  # OSINT engine is additive — never block the core backend from starting
+    from .osint.engine import run as osint_lookup
+    from .osint.streaming import run_streaming
+    _OSINT = True
+except Exception:  # noqa: BLE001
+    _OSINT = False
+
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 settings = load_settings()
@@ -206,6 +213,26 @@ async def ws_events(ws: WebSocket) -> None:
         pass
     finally:
         hub.unsubscribe(q)
+
+
+if _OSINT:
+    @app.post("/osint/lookup", dependencies=[Depends(require_auth)])
+    async def osint_lookup_route(body: IngestText) -> dict:
+        """Deep OSINT intelligence lookup (person / company / product / technology)."""
+        return await osint_lookup(body.text)
+
+    @app.websocket("/ws/osint")
+    async def ws_osint(ws: WebSocket) -> None:
+        """Stream a lookup's progress. Send the query as the first text message (or ?q=...)."""
+        if not await _ws_authed(ws):
+            return
+        await ws.accept()
+        try:
+            query = ws.query_params.get("q") or await ws.receive_text()
+            async for event in run_streaming(query):
+                await ws.send_json(event)
+        except WebSocketDisconnect:
+            return
 
 
 async def _broadcast(result: dict) -> None:
