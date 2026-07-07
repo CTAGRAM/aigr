@@ -34,6 +34,13 @@ def resolve(results: list[WorkerResult]) -> Person:
                 person.bio = d["answer"]
             person.evidence.append(r.to_dict())
 
+        elif r.provider == "company":
+            if not person.bio and d.get("extract"):
+                person.bio = d["extract"]
+            if not person.website and d.get("url"):
+                person.website = d["url"]
+            person.evidence.append(r.to_dict())
+
         elif r.provider == "memory":
             if d.get("memories"):
                 person.evidence.append(r.to_dict())

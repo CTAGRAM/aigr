@@ -43,6 +43,12 @@ def available() -> list[str]:
     return sorted(_discover())
 
 
+def resolve_workers(names: list[str]) -> list[tuple[str, Callable[..., Awaitable[WorkerResult]]]]:
+    """Return (name, fn) pairs for the requested, available workers — used by the streaming engine."""
+    reg = _discover()
+    return [(n, reg[n]) for n in names if n in reg]
+
+
 async def execute(names: list[str], query: str) -> list[WorkerResult]:
     """Run the named workers concurrently. Failure/absence of one never fails the lookup."""
     reg = _discover()

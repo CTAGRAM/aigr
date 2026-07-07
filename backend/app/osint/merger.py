@@ -32,5 +32,7 @@ def merge(query: str, results: list[WorkerResult]) -> dict:
                     "url": res.get("url"),
                     "score": res.get("score"),
                 })
+        elif r.provider == "company" and r.success and d.get("extract") and not summary:
+            summary = d["extract"]
 
     return {"summary": summary, "sources": sources, "matches": matches}
