@@ -8,6 +8,9 @@ set -euo pipefail
 : "${LLM_API_KEY:?set LLM_API_KEY (bearer token for your OpenAI-compatible LLM endpoint)}"
 LLM_BASE_URL="${LLM_BASE_URL:-https://api.groq.com/openai/v1}"   # your endpoint's /v1 base
 LLM_MODEL="${LLM_MODEL:-llama-3.2-11b-vision-preview}"           # a vision-capable model id
+# API token: reuse an existing one on redeploys, else generate a fresh one.
+API_TOKEN="${API_TOKEN:-$(grep -s '^API_TOKEN=' /etc/aiglass.env | cut -d= -f2)}"
+API_TOKEN="${API_TOKEN:-$(openssl rand -hex 24)}"
 
 echo "==> Installing system packages"
 sudo apt-get update -y
@@ -28,6 +31,7 @@ echo "==> Writing environment (/etc/aiglass.env)"
 # Vision (and Hermes' brain) use YOUR OpenAI-compatible LLM endpoint.
 sudo tee /etc/aiglass.env >/dev/null <<EOF
 AIGLASS_DB=$HOME/aiglass.db
+API_TOKEN=$API_TOKEN
 STT_PROVIDER=mock
 VISION_PROVIDER=llm
 VISION_BASE_URL=$LLM_BASE_URL
@@ -37,6 +41,7 @@ ORCH_PROVIDER=hermes
 HERMES_URL=http://127.0.0.1:8080
 AIGLASS_API_URL=http://127.0.0.1:8000
 EOF
+echo "==> API_TOKEN = $API_TOKEN   (use this as 'Authorization: Bearer <token>' from the app)"
 
 echo "==> systemd service: backend API"
 sudo tee /etc/systemd/system/aiglass-backend.service >/dev/null <<EOF

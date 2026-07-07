@@ -13,6 +13,10 @@ from dataclasses import dataclass
 class Settings:
     db_path: str = os.getenv("AIGLASS_DB", "aiglass.db")
 
+    # If set, every endpoint except /health requires  Authorization: Bearer <token>  (or ?token= on WS).
+    # Empty = auth disabled (fine for local/dev; set it in production).
+    api_token: str = os.getenv("API_TOKEN", "")
+
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")        # mock | whisper
     whisper_model: str = os.getenv("WHISPER_MODEL", "base")
 

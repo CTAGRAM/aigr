@@ -33,9 +33,11 @@ _API_URL = os.getenv("AIGLASS_API_URL", "http://127.0.0.1:8000")
 def _broadcast_result(text: str) -> None:
     try:
         payload = json.dumps({"role": "assistant", "text": text, "source": "hermes"}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if (tok := os.getenv("API_TOKEN")):
+            headers["Authorization"] = f"Bearer {tok}"
         req = urllib.request.Request(
-            _API_URL.rstrip("/") + "/turn", data=payload,
-            headers={"Content-Type": "application/json"}, method="POST",
+            _API_URL.rstrip("/") + "/turn", data=payload, headers=headers, method="POST",
         )
         urllib.request.urlopen(req, timeout=2.0).close()
     except Exception:
