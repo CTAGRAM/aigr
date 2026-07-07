@@ -1,137 +1,71 @@
-import time
+"""GitHub worker — resolves a query to a GitHub user, then pulls profile + recent repos + language mix."""
+from __future__ import annotations
+
 import httpx
 
 from ...config import load_settings
+from ..logging import get_logger
+from ..result import WorkerResult
+from .base import worker
 
-API="https://api.github.com"
+API = "https://api.github.com"
+log = get_logger("github")
 
 
-async def github_worker(query:str):
-
-    settings=load_settings()
-
-    headers={
-        "Accept":"application/vnd.github+json",
-        "User-Agent":"AIGlass"
-    }
-
+@worker("github", timeout=15)
+async def github_worker(query: str) -> WorkerResult:
+    settings = load_settings()
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "AIGlass"}
     if settings.github_token:
-        headers["Authorization"]=f"Bearer {settings.github_token}"
+        headers["Authorization"] = f"Bearer {settings.github_token}"
 
-    start=time.perf_counter()
-
-    async with httpx.AsyncClient(timeout=20) as client:
-
-        search=await client.get(
-            API+"/search/users",
-            params={
-                "q":query,
-                "per_page":1,
-            },
-            headers=headers,
+    async with httpx.AsyncClient(timeout=15) as client:
+        search = await client.get(
+            f"{API}/search/users", params={"q": query, "per_page": 1}, headers=headers
         )
+        if search.status_code != 200:
+            log.warning("search status=%s body=%s", search.status_code, search.text[:200])
+            return WorkerResult.failed("github", f"search HTTP {search.status_code}")
 
-        if search.status_code!=200:
-
-            print("GitHub Status:", search.status_code)
-            print(search.text)
-
-            return {
-                "provider":"github",
-                "success":False,
-                "confidence":0,
-                "latency_ms":0,
-                "data":{
-                    "status":search.status_code,
-                    "body":search.text,
-                },
-            }
-
-        items=search.json().get("items",[])
-
+        items = search.json().get("items", [])
         if not items:
+            return WorkerResult(provider="github", success=True, confidence=0.0, data={})
 
-            return {
-                "provider":"github",
-                "success":True,
-                "confidence":0,
-                "latency_ms":0,
-                "data":{},
-            }
-
-        username=items[0]["login"]
-
-        profile=await client.get(
-            API+"/users/"+username,
-            headers=headers,
+        username = items[0]["login"]
+        profile = await client.get(f"{API}/users/{username}", headers=headers)
+        repos = await client.get(
+            f"{API}/users/{username}/repos", params={"sort": "updated", "per_page": 5}, headers=headers
         )
 
-        repos=await client.get(
-            API+"/users/"+username+"/repos",
-            params={
-                "sort":"updated",
-                "per_page":5,
-            },
-            headers=headers,
-        )
-
-    latency=int((time.perf_counter()-start)*1000)
-
-    profile_json=profile.json()
-
-    repo_json=repos.json()
-
-    languages={}
-
-    repo_list=[]
-
-    for repo in repo_json:
-
-        lang=repo.get("language")
-
+    pj = profile.json()
+    languages: dict[str, int] = {}
+    repo_list: list[dict] = []
+    for repo in repos.json():
+        lang = repo.get("language")
         if lang:
-            languages[lang]=languages.get(lang,0)+1
-
+            languages[lang] = languages.get(lang, 0) + 1
         repo_list.append({
-            "name":repo["name"],
-            "language":repo.get("language"),
-            "stars":repo.get("stargazers_count"),
-            "updated":repo.get("updated_at"),
+            "name": repo.get("name"),
+            "language": lang,
+            "stars": repo.get("stargazers_count"),
+            "updated": repo.get("updated_at"),
         })
 
-    return {
-
-        "provider":"github",
-
-        "success":True,
-
-        "confidence":0.9,
-
-        "latency_ms":latency,
-
-        "data":{
-
-            "username":profile_json.get("login"),
-
-            "name":profile_json.get("name"),
-
-            "company":profile_json.get("company"),
-
-            "location":profile_json.get("location"),
-
-            "bio":profile_json.get("bio"),
-
-            "followers":profile_json.get("followers"),
-
-            "following":profile_json.get("following"),
-
-            "public_repos":profile_json.get("public_repos"),
-
-            "blog":profile_json.get("blog"),
-
-            "languages":languages,
-
-            "repos":repo_list,
-
-        }
-    }
+    return WorkerResult(
+        provider="github",
+        success=True,
+        confidence=0.9,
+        data={
+            "username": pj.get("login"),
+            "name": pj.get("name"),
+            "company": pj.get("company"),
+            "location": pj.get("location"),
+            "bio": pj.get("bio"),
+            "followers": pj.get("followers"),
+            "following": pj.get("following"),
+            "public_repos": pj.get("public_repos"),
+            "blog": pj.get("blog"),
+            "languages": languages,
+            "repos": repo_list,
+        },
+    )

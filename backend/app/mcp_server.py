@@ -16,6 +16,7 @@ import urllib.request
 from .config import load_settings
 from .memory.store import MemoryStore
 from .osint.public_search import public_search
+from .osint.engine import run as person_lookup
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -93,6 +94,21 @@ async def aiglass_public_search(
         query=query,
         max_results=max_results,
     )
+
+
+@mcp.tool()
+async def aiglass_person_lookup(query: str) -> dict:
+    """
+    Deep intelligence lookup on a person (also works for a company, product, or technology).
+
+    Fans out to parallel OSINT workers (memory, web search, GitHub, ...), resolves them into one
+    canonical entity, scores the evidence, and returns a structured report:
+      { query, person, summary, confidence, sources, matches, workers_used, latency_ms }
+
+    This is the ONE tool the agent needs — it never has to know which workers exist. Adding a new source
+    is a new worker file; this tool's signature never changes.
+    """
+    return await person_lookup(query)
 
 
 if __name__ == "__main__":

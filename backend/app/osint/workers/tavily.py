@@ -1,21 +1,20 @@
-import time
+"""Tavily worker — public web search with an answer + ranked results."""
+from __future__ import annotations
 
 import httpx
 
 from ...config import load_settings
+from ..result import WorkerResult
+from .base import worker
 
 TAVILY_URL = "https://api.tavily.com/search"
 
 
-async def tavily_worker(
-    query: str,
-    max_results: int = 5,
-) -> dict:
-
+@worker("tavily", timeout=18)
+async def tavily_worker(query: str, max_results: int = 5) -> WorkerResult:
     settings = load_settings()
-
     if not settings.tavily_api_key:
-        raise RuntimeError("TAVILY_API_KEY not configured")
+        return WorkerResult.failed("tavily", "TAVILY_API_KEY not configured")
 
     payload = {
         "api_key": settings.tavily_api_key,
@@ -26,28 +25,14 @@ async def tavily_worker(
         "include_raw_content": False,
         "max_results": max_results,
     }
-
-    start = time.perf_counter()
-
-    async with httpx.AsyncClient(timeout=20) as client:
-
-        response = await client.post(
-            TAVILY_URL,
-            json=payload,
-        )
-
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(TAVILY_URL, json=payload)
         response.raise_for_status()
-
         data = response.json()
 
-    latency = int((time.perf_counter() - start) * 1000)
-
-    return {
-        "provider": "tavily",
-        "success": True,
-        "confidence": 0.75,
-        "latency_ms": latency,
-        "query": query,
-        "answer": data.get("answer", ""),
-        "results": data.get("results", []),
-    }
+    return WorkerResult(
+        provider="tavily",
+        success=True,
+        confidence=0.75,
+        data={"answer": data.get("answer", ""), "results": data.get("results", [])},
+    )

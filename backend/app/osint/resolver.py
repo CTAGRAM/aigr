@@ -1,34 +1,41 @@
+"""Entity resolution — merge many `WorkerResult`s into one canonical `Person`.
+
+Consumes the WorkerResult contract (was: raw dicts). Adding a new provider = one `elif`; the resolver
+never knows how the worker fetched its data.
+"""
+from __future__ import annotations
 
 from .entity import Person
+from .result import WorkerResult
 
 
-def resolve(workers):
-
-    person=Person()
-
-    for worker in workers:
-
-        if isinstance(worker,Exception):
+def resolve(results: list[WorkerResult]) -> Person:
+    person = Person()
+    for r in results:
+        if not isinstance(r, WorkerResult) or not r.success:
             continue
+        d = r.data or {}
 
-        provider=worker.get("provider")
+        if r.provider == "github":
+            person.name = d.get("name") or person.name
+            person.github = d.get("username") or person.github
+            person.company = d.get("company") or person.company
+            person.bio = d.get("bio") or person.bio
+            person.location = d.get("location") or person.location
+            person.website = d.get("blog") or person.website
+            if d.get("languages"):
+                person.attributes["languages"] = d["languages"]
+            if d.get("repos"):
+                person.attributes["repos"] = d["repos"]
+            person.evidence.append(r.to_dict())
 
-        if provider=="github":
+        elif r.provider == "tavily":
+            if not person.bio and d.get("answer"):
+                person.bio = d["answer"]
+            person.evidence.append(r.to_dict())
 
-            d=worker["data"]
-
-            person.name=d.get("name") or person.name
-
-            person.github=d.get("username") or person.github
-
-            person.company=d.get("company") or person.company
-
-            person.bio=d.get("bio") or person.bio
-
-            person.location=d.get("location") or person.location
-
-            person.website=d.get("blog") or person.website
-
-            person.evidence.append(worker)
+        elif r.provider == "memory":
+            if d.get("memories"):
+                person.evidence.append(r.to_dict())
 
     return person

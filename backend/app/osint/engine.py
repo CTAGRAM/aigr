@@ -1,34 +1,70 @@
-import asyncio
+"""The engine: plan → execute → resolve → merge → score → summarize.
 
-from .cache import person_cache
+Knows nothing about worker implementations — only the planner (which workers), the registry (run them),
+the resolver (canonical entity), the merger (assemble evidence), and the scorer (confidence). Swapping a
+worker or storage backend never touches this file.
+
+`lookup_person` is kept as a backward-compatible alias of `run`.
+"""
+from __future__ import annotations
+
+import time
+
+from . import registry
+from .cache import entity_cache
+from .logging import get_logger
+from .merger import merge
 from .planner import plan
-from .scorer import merge_results
-from .workers import WORKERS
+from .resolver import resolve
+from .scorer import score
+
+log = get_logger("engine")
 
 
-async def lookup_person(query: str):
+def _summary(person, merged: dict) -> str:
+    if merged.get("summary"):
+        return merged["summary"]
+    bits: list[str] = []
+    if person.name:
+        bits.append(person.name)
+    if person.company:
+        bits.append(f"at {person.company}")
+    if person.bio:
+        bits.append(f"— {person.bio}")
+    return " ".join(bits) or "No confident match found."
 
-    if query in person_cache:
-        return person_cache[query]
 
-    worker_names = plan(query)
+async def run(query: str) -> dict:
+    key = query.strip().lower()
+    if key in entity_cache:
+        cached = dict(entity_cache[key])
+        cached["cache_hit"] = True
+        return cached
 
-    tasks = [
-        WORKERS[name](query)
-        for name in worker_names
-        if name in WORKERS
-    ]
+    start = time.perf_counter()
+    names = plan(query)
+    log.info("plan query=%r workers=%s", query, names)
 
-    results = await asyncio.gather(
-        *tasks,
-        return_exceptions=True,
-    )
+    results = await registry.execute(names, query)      # list[WorkerResult]
+    person = resolve(results)
+    merged = merge(query, results)
+    confidence = score(results)
+    person.confidence = confidence
 
-    merged = merge_results(
-        query=query,
-        workers=results,
-    )
+    out = {
+        "query": query,
+        "person": person.to_dict(),
+        "summary": _summary(person, merged),
+        "confidence": confidence,
+        "sources": merged["sources"],
+        "matches": merged["matches"],
+        "workers_used": [r.provider for r in results],
+        "latency_ms": int((time.perf_counter() - start) * 1000),
+        "cache_hit": False,
+    }
+    entity_cache[key] = out
+    return out
 
-    person_cache[query] = merged
 
-    return merged
+# Backward-compatible name (older callers / the MCP layer).
+lookup_person = run

@@ -1,28 +1,21 @@
-import time
+"""Memory worker — searches the user's captured aiGlass memory (SQLite). Local + fast (<30ms target)."""
+from __future__ import annotations
 
-from ...memory.store import MemoryStore
+import asyncio
+
 from ...config import load_settings
+from ...memory.store import MemoryStore
+from ..result import WorkerResult
+from .base import worker
 
 
-async def memory_worker(query: str):
-
-    settings = load_settings()
-
-    store = MemoryStore(settings.db_path)
-
-    start = time.perf_counter()
-
-    memories = store.search_memories(
-        query,
-        limit=10,
+@worker("memory", timeout=3, retries=1)
+async def memory_worker(query: str) -> WorkerResult:
+    store = MemoryStore(load_settings().db_path)
+    memories = await asyncio.to_thread(store.search_memories, query, 10)
+    return WorkerResult(
+        provider="memory",
+        success=True,
+        confidence=1.0 if memories else 0.0,
+        data={"memories": [m.__dict__ for m in memories]},
     )
-
-    latency = int((time.perf_counter()-start)*1000)
-
-    return {
-        "provider":"memory",
-        "success":True,
-        "confidence":1.0 if memories else 0.0,
-        "latency_ms":latency,
-        "data":[m.__dict__ for m in memories]
-    }
