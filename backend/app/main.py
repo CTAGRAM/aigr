@@ -37,6 +37,13 @@ try:  # OSINT engine is additive — never block the core backend from starting
 except Exception:  # noqa: BLE001
     _OSINT = False
 
+try:  # face recognition (enrolled-only) — additive, fail-safe
+    from .face.service import FaceService
+    _face = FaceService()
+    _FACE = True
+except Exception:  # noqa: BLE001
+    _FACE = False
+
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 settings = load_settings()
@@ -233,6 +240,42 @@ if _OSINT:
                 await ws.send_json(event)
         except WebSocketDisconnect:
             return
+
+
+if _FACE:
+    class FaceEnroll(BaseModel):
+        name: str
+        image_b64: str
+        notes: str = ""
+        lookup_query: str = ""
+
+    class FaceImage(BaseModel):
+        image_b64: str
+
+    @app.post("/face/enroll", dependencies=[Depends(require_auth)])
+    async def face_enroll(body: FaceEnroll) -> dict:
+        """Save a person's face. Enroll ONLY people who consented."""
+        return _face.enroll(base64.b64decode(body.image_b64), body.name, body.notes, body.lookup_query)
+
+    @app.post("/face/recognize", dependencies=[Depends(require_auth)])
+    async def face_recognize(body: FaceImage) -> dict:
+        """Recognize a face against ENROLLED people only (never identifies strangers). Enriches with the
+        intelligence engine when the matched person has a lookup_query."""
+        result = _face.recognize(base64.b64decode(body.image_b64))
+        if result.get("recognized") and result.get("lookup_query") and _OSINT:
+            try:
+                result["intelligence"] = await osint_lookup(result["lookup_query"])
+            except Exception:  # noqa: BLE001
+                pass
+        return result
+
+    @app.get("/face/list", dependencies=[Depends(require_auth)])
+    def face_list() -> dict:
+        return {"enrolled": _face.list()}
+
+    @app.delete("/face/{name}", dependencies=[Depends(require_auth)])
+    def face_delete(name: str) -> dict:
+        return {"deleted": _face.delete(name)}
 
 
 async def _broadcast(result: dict) -> None:
